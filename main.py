@@ -86,11 +86,20 @@ async def get_formats(request: URLRequest):
     """Extract available formats from a video URL"""
     cleanup_old_files()
 
+    # Handle cookies from env
+    cookie_file = None
+    if os.environ.get('COOKIES_CONTENT'):
+        cookie_path = TEMP_DIR / "cookies.txt"
+        with open(cookie_path, "w", encoding="utf-8") as f:
+            f.write(os.environ['COOKIES_CONTENT'])
+        cookie_file = str(cookie_path)
+
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
         'skip_download': True,
         'proxy': request.proxy if request.proxy else None,
+        'cookiefile': cookie_file,
     }
 
     try:
@@ -159,6 +168,14 @@ async def download_merged(request: DownloadRequest):
     audio_file = TEMP_DIR / f"{job_id}_audio.m4a"
     output_file = TEMP_DIR / f"{job_id}_merged.mp4"
 
+    # Handle cookies from env
+    cookie_file = None
+    if os.environ.get('COOKIES_CONTENT'):
+        cookie_path = TEMP_DIR / "cookies.txt"
+        with open(cookie_path, "w", encoding="utf-8") as f:
+            f.write(os.environ['COOKIES_CONTENT'])
+        cookie_file = str(cookie_path)
+
     try:
         # Get video info first for title
         ydl_opts_info = {
@@ -166,6 +183,7 @@ async def download_merged(request: DownloadRequest):
             'no_warnings': True,
             'skip_download': True,
             'proxy': request.proxy if request.proxy else None,
+            'cookiefile': cookie_file,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
@@ -179,6 +197,7 @@ async def download_merged(request: DownloadRequest):
             'no_warnings': True,
             'outtmpl': str(video_file),
             'proxy': request.proxy if request.proxy else None,
+            'cookiefile': cookie_file,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts_video) as ydl:
@@ -191,6 +210,7 @@ async def download_merged(request: DownloadRequest):
             'no_warnings': True,
             'outtmpl': str(audio_file),
             'proxy': request.proxy if request.proxy else None,
+            'cookiefile': cookie_file,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts_audio) as ydl:
