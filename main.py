@@ -86,6 +86,8 @@ async def get_formats(request: URLRequest):
     """Extract available formats from a video URL"""
     cleanup_old_files()
 
+    print(f"DEBUG: Processing URL: {request.url}")
+
     # Handle cookies from env
     cookie_file = None
     if os.environ.get('COOKIES_CONTENT'):
@@ -93,28 +95,50 @@ async def get_formats(request: URLRequest):
         with open(cookie_path, "w", encoding="utf-8") as f:
             f.write(os.environ['COOKIES_CONTENT'])
         cookie_file = str(cookie_path)
+    elif os.path.exists("cookies.txt"):
+        print("DEBUG: Found local cookies.txt file")
+        cookie_file = "cookies.txt"
 
+    # Use default robust options instead of forcing clients
     ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
+        'quiet': False,
+        'no_warnings': False,
         'skip_download': True,
         'proxy': request.proxy if request.proxy else None,
         'cookiefile': cookie_file,
+        'logtostderr': True,
+        # 'format': 'best', # Un-commenting this sometimes helps, but default is usually fine for metadata
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            print(f"DEBUG: Extracting info for {request.url}")
             info = ydl.extract_info(request.url, download=False)
-            title = info.get('title', 'Unknown Title')
 
+            title = info.get('title', 'Unknown Title')
             thumbnail = info.get('thumbnail')
             if not thumbnail and info.get('thumbnails'):
                 thumbnails = info.get('thumbnails', [])
                 if thumbnails:
+                    # Get highest resolution thumbnail
                     thumbnail = thumbnails[-1].get('url')
 
             formats = []
             raw_formats = info.get('formats', [])
+
+            if not raw_formats:
+                # Some sites (like instagram) might not return 'formats' but just a direct url
+                if info.get('url'):
+                    # Create a synthetic format
+                    formats.append(FormatInfo(
+                        format_id='default',
+                        ext=info.get('ext', 'mp4'),
+                        resolution=f"{info.get('width', '?')}x{info.get('height', '?')}",
+                        note='Default Source',
+                        type='combined',
+                        filesize=info.get('filesize'),
+                        height=info.get('height', 0),
+                    ))
 
             for f in raw_formats:
                 vcodec = f.get('vcodec')
@@ -150,14 +174,18 @@ async def get_formats(request: URLRequest):
 
             formats.sort(key=lambda x: x.height, reverse=True)
 
+            print(f"DEBUG: Successfully found {len(formats)} formats")
             return FormatsResponse(
                 status="success",
                 title=title,
                 thumbnail=thumbnail or '',
                 formats=formats
             )
+
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        error_msg = str(e)
+        print(f"DEBUG: Extraction failed: {error_msg}")
+        raise HTTPException(status_code=400, detail=f"Extraction failed: {error_msg}")
 
 @app.post("/api/download")
 async def download_merged(request: DownloadRequest):
